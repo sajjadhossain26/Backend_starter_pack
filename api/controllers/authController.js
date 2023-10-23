@@ -262,7 +262,8 @@ export const setNewPassword = asyncHandler(async(req, res, next) => {
         const hash_pass =await bcrypt.hash(req.body.password, salt)
       if(resetUser){
         await User.findByIdAndUpdate({_id: resetUser._id}, {
-          password: hash_pass
+          password: hash_pass,
+          code: ""
         })
 
         return res.clearCookie("findUser").status(200).json({
