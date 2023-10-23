@@ -32,6 +32,9 @@ const userSchema = mongoose.Schema({
         required: true,
         trim: true,
     },
+    code: {
+        type: String,
+    },
     role: {
         type: String,
         default: "Author",

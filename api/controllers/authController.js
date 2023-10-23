@@ -3,6 +3,8 @@ import User from "../models/User.js";
 import createError from "./errorController.js";
 import bcrypt from "bcryptjs";
 import jwt from 'jsonwebtoken'
+import { mathRandom } from "../utilities/math.js";
+import { sendResetCode } from "../utilities/sendMail.js";
 
 
 /**
@@ -128,3 +130,150 @@ export const login = asyncHandler(async (req, res, next) => {
 export const loggedInUser = asyncHandler(async(req, res) => {
   res.status(200).json(req.me)
 })
+
+
+
+/**
+ * @access public
+ * @method post
+ * @route api/auth/finduserReset
+ */
+
+export const findUserReset = asyncHandler(async(req, res, next) => {
+try {
+  const {email} = req.body;
+
+  const resetUserFind = await User.findOne({email})
+
+  if(!resetUserFind){
+    return res.status(404).json({
+      message: "User not found!"
+    })
+  }
+
+if(resetUserFind){
+   //  forgot password code
+      let confirmCodeRest = mathRandom(10000, 99999)
+// check code
+       const checkCode = await User.findOne({code: confirmCodeRest})
+
+if(checkCode){
+  confirmCodeRest = mathRandom(10000, 99999)
+}
+
+
+    sendResetCode(resetUserFind.email, {
+      name: resetUserFind.name,
+      code: confirmCodeRest
+    })
+     
+    await User.findByIdAndUpdate(resetUserFind._id, {
+      code: confirmCodeRest
+    })
+
+      //Create access token
+      const token = jwt.sign({email: resetUserFind.email}, process.env.ACCESS_TOKEN_SECRET, {
+        expiresIn: process.env.ACCESS_TOKEN_EXPIRE_IN 
+       });
+
+    
+
+    res.cookie('findUser', token,{
+      httpOnly: true,
+      secure: process.env.APP_ENV == "Development"? false : true,
+       sameSite: "strict",
+       path: '/',
+       maxAge: 7* 24* 60* 1000
+     })
+
+    return res.status(200).json({
+      message: "Verification code has been send"
+    })
+  }
+} catch (error) {
+  next(error) 
+}
+})
+
+
+
+/**
+ * @access public
+ * @method post
+ * @route api/auth/codeConfirmationReset
+ */
+
+export const codeConfirmationReset = asyncHandler(async(req, res, next) => {
+   try {
+
+    const {code} = req.body
+
+
+   const codematch = await User.findOne({code})
+
+   if(!codematch){
+   return  res.status(400).json({
+      message: "Code not match"
+     })
+   }
+
+   if(codematch){
+    return res.status(200).json({
+      message: "Set new passsword",
+    })
+   }
+
+    
+   } catch (error) {
+    next(error)
+   }
+})
+
+
+
+/**
+ * @access public
+ * @method post
+ * @route api/auth/setNewPassword
+ */
+
+export const setNewPassword = asyncHandler(async(req, res, next) => {
+  try {
+    const accessToken = req.cookies.findUser;
+    
+   if(!accessToken){
+    return res.status(400).json({
+      message: "Unauthorized User"
+  })
+   }
+    const tokenCheck = jwt.verify(accessToken, process.env.ACCESS_TOKEN_SECRET)
+
+    
+    if(!tokenCheck){
+      return res.status(400).json({
+          message: "Unauthorized User"
+      })
+     }
+    if(tokenCheck){
+      const resetUser = await User.findOne({email: tokenCheck.email})
+
+        // bcrypt password
+        const salt =await bcrypt.genSalt(10);
+        const hash_pass =await bcrypt.hash(req.body.password, salt)
+      if(resetUser){
+        await User.findByIdAndUpdate({_id: resetUser._id}, {
+          password: hash_pass
+        })
+
+        return res.clearCookie("findUser").status(200).json({
+          message: "Password reset sucessfull"
+      })
+      }
+    }
+   
+  } catch (error) {
+   next(error)
+  }
+})
+
+
